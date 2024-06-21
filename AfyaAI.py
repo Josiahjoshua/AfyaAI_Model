@@ -1,13 +1,15 @@
 import os
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications import VGG19
-from tensorflow.keras.layers import Dense, Flatten
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
-from sklearn.model_selection import train_test_split
 import pydicom
+import tensorflow as tf
+from tensorflow.keras.applications import VGG19
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Flatten, Dropout, BatchNormalization
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score
+from sklearn.preprocessing import StandardScaler
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -69,26 +71,52 @@ for layer in base_model.layers:
 x = base_model.output
 x = Flatten()(x)
 x = Dense(512, activation='relu')(x)
-x = Dense(1, activation='sigmoid')(x)  # Binary classification
+x = BatchNormalization()(x)
+x = Dropout(0.5)(x)
+x = Dense(256, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dropout(0.5)(x)
+x = Dense(128, activation='relu')(x)
+x = BatchNormalization()(x)
+x = Dropout(0.5)(x)
 
-model = Model(inputs=base_model.input, outputs=x)
+# This model will be used to extract features
+feature_extractor_model = Model(inputs=base_model.input, outputs=x)
 
-model.compile(optimizer=Adam(learning_rate=0.0001), loss='binary_crossentropy', metrics=['accuracy'])
+# Compile the model to make it ready for feature extraction
+feature_extractor_model.compile(optimizer=Adam(learning_rate=0.0001), loss='binary_crossentropy', metrics=['accuracy'])
+
+#extract feature
+def extract_features(model, data):
+    features = model.predict(data)
+    return features
+
+# Normalize images for VGG-19
+X_train_scaled = X_train / 255.0
+X_val_scaled = X_val / 255.0
+X_test_scaled = X_test / 255.0
+
+# Extract features
+train_features = extract_features(feature_extractor_model, X_train_scaled)
+val_features = extract_features(feature_extractor_model, X_val_scaled)
+test_features = extract_features(feature_extractor_model, X_test_scaled)
+
+#standardize feature
+scaler = StandardScaler()
+train_features = scaler.fit_transform(train_features)
+val_features = scaler.transform(val_features)
+test_features = scaler.transform(test_features)
+
+#Train Xgradient model
+xgb_model = XGBClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
+xgb_model.fit(train_features, y_train, eval_set=[(val_features, y_val)], early_stopping_rounds=10, eval_metric="logloss", verbose=True)
 
 
-#TRAINING THE MODEL
-history = model.fit(
-    train_generator,
-    steps_per_epoch=len(X_train) // 32,
-    validation_data=val_generator,
-    validation_steps=len(X_val) // 32,
-    epochs=10
-)
-
-#EVALUATE THE MODEL
-
-test_loss, test_accuracy = model.evaluate(test_generator, steps=len(X_test) // 32)
+#Evaluate model
+y_pred = xgb_model.predict(test_features)
+test_accuracy = accuracy_score(y_test, y_pred)
 print(f'Test accuracy: {test_accuracy:.2f}')
 
-#SAVING THE MODEL
-model.save('path_to_the_model.h5')
+#saving model
+feature_extractor_model.save('/path/to/your/feature_extractor_model.h5')
+xgb_model.save_model('/path/to/your/xgb_model.json')
