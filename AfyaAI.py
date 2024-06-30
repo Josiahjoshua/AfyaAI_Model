@@ -6,35 +6,47 @@ from tensorflow.keras.applications import VGG19
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, Flatten, Dropout, BatchNormalization
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.optimizers import Adam
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
+import pandas as pd
 
 # Set random seed for reproducibility
 np.random.seed(42)
 tf.random.set_seed(42)
 
 #LOAD AND PREPROCESS DATA
-def load_dicom_images(data_dir):
+def load_dicom_images_and_labels(image_dir, metadata_file):
+    metadata = pd.read_csv(metadata_file)
     images = []
     labels = []
-    for class_dir in os.listdir(data_dir):
-        class_path = os.path.join(data_dir, class_dir)
-        if os.path.isdir(class_path):
-            for filename in os.listdir(class_path):
-                if filename.endswith('.dcm'):
-                    filepath = os.path.join(class_path, filename)
-                    ds = pydicom.dcmread(filepath)
-                    image = ds.pixel_array
-                    image = np.stack((image,) * 3, axis=-1)  # Convert to 3-channel image
-                    image = tf.image.resize(image, (224, 224)).numpy()  # Resize to VGG input size
+
+    for root, _, files in os.walk(image_dir):
+        for filename in files:
+            if filename.endswith('.dcm'):
+                filepath = os.path.join(root, filename)
+                ds = pydicom.dcmread(filepath)
+                image = ds.pixel_array
+                image = np.stack((image,) * 3, axis=-1)  # Convert to 3-channel image
+                image = tf.image.resize(image, (224, 224)).numpy()  # Resize to VGG input size
+
+                # Extract patient ID from filepath and find the label
+                patient_id = filepath.split(os.sep)[-3]  # Assuming patient ID is in this position in the path
+                label_row = metadata[metadata['patient_id'] == patient_id]
+                if not label_row.empty:
+                    label = 0 if label_row['pathology'].values[0] == "Benign" else 1
                     images.append(image)
-                    labels.append(0 if class_dir == "no_cancer" else 1)
+                    labels.append(label)
+                else:
+                    print(f"No metadata found for patient ID: {patient_id}")
+
     return np.array(images), np.array(labels)
 
-data_dir = 'path_to_the_datapipeline'
-X, y = load_dicom_images(data_dir)
+data_dir = 'E:\\JOSIAH CANCER DATASET_DONT F_TOUCH IT\\CANCER DATA'
+metadata_file = 'E:\\JOSIAH CANCER DATASET_DONT F_TOUCH IT\\metadata\\metadata.csv'
+X, y = load_dicom_images_and_labels(data_dir, metadata_file)
 
 #SPLIT DATASET
 X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.3, random_state=42)
@@ -118,5 +130,5 @@ test_accuracy = accuracy_score(y_test, y_pred)
 print(f'Test accuracy: {test_accuracy:.2f}')
 
 #saving model
-feature_extractor_model.save('/path/to/your/feature_extractor_model.h5')
-xgb_model.save_model('/path/to/your/xgb_model.json')
+feature_extractor_model.save('E:\Model_output')
+xgb_model.save_model('E:\Model_output')
