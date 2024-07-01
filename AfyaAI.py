@@ -44,8 +44,8 @@ def load_dicom_images_and_labels(image_dir, metadata_file):
 
     return np.array(images), np.array(labels)
 
-data_dir = 'E:\\JOSIAH CANCER DATASET_DONT F_TOUCH IT\\CANCER DATA'
-metadata_file = 'E:\\JOSIAH CANCER DATASET_DONT F_TOUCH IT\\metadata\\metadata.csv'
+data_dir = 'E:\JOSIAH CANCER DATASET_DONT F_TOUCH IT\manifest-ZkhPvrLo5216730872708713142\CBIS-DDSM'
+metadata_file = 'E:\JOSIAH CANCER DATASET_DONT F_TOUCH IT\manifest-ZkhPvrLo5216730872708713142\metadata'
 X, y = load_dicom_images_and_labels(data_dir, metadata_file)
 
 #SPLIT DATASET
